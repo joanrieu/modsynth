@@ -1,5 +1,5 @@
 #include <cmath>
-#include "synth.h"
+#include "modsynth.h"
 
 Module::~Module() {}
 void Module::update(float dt) {}
