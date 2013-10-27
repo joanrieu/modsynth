@@ -1,10 +1,14 @@
-synth: synth.cpp
-	clang++ -std=c++11 -ggdb -o $@ $^
+CXX=clang++
+CXXFLAGS=-std=c++11 -ggdb
+LIBFLAGS=-shared -fPIC
 
-.PHONY: play clean
+synth: main.cpp libmodsynth.so
+	$(CXX) $(CXXFLAGS) -o $@ $^
 
-play: synth
-	./synth | aplay -f FLOAT_LE -r 44100 -c 2
+libmodsynth.so: synth.cpp
+	$(CXX) $(CXXFLAGS) $(LIBFLAGS) -o $@ $^
 
-clean:
-	rm -f synth
+.PHONY: clean
+
+clean: synth libmodsynth.so
+	rm -f $^
