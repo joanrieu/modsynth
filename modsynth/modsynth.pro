@@ -4,4 +4,4 @@ LIBS += ../libmodsynth/libmodsynth.a -ljack
 
 QMAKE_CXXFLAGS += -std=c++11
 HEADERS += ModSynth.h
-SOURCES += main.cpp
+SOURCES += ModSynth.cpp

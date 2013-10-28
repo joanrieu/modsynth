@@ -4,11 +4,11 @@
 #include "ModSynth.h"
 
 ModSynth::ModSynth() {
-  createSynth();
-  createJACK();
+  initSynth();
+  initJACK();
 }
 
-void ModSynth::createSynth() {
+void ModSynth::initSynth() {
 
   VCO* gate_speed_lfo = new SineVCO;
   gate_speed_lfo->cv = new float(.1);
@@ -43,13 +43,19 @@ void ModSynth::createSynth() {
 
 }
 
-int process(jack_nframes_t nframes, void* arg) {
-  return static_cast<ModSynth*>(arg)->processJACK(nframes);
+namespace {
+  int process(jack_nframes_t nframes, void* arg) {
+    return static_cast<ModSynth*>(arg)->processJACK(nframes);
+  }
 }
 
-void ModSynth::createJACK() {
+void ModSynth::initJACK() {
 
   client = jack_client_open("modsynth", JackNullOption, nullptr, nullptr);
+
+  if (!client)
+    return;
+
   port = jack_port_register(client, "output", JACK_DEFAULT_AUDIO_TYPE, JackPortIsOutput, 0);
   jack_set_process_callback(client, process, this);
   jack_activate(client);
@@ -82,7 +88,10 @@ qreal ModSynth::filterCutoff() const {
 }
 
 void ModSynth::setFilterCutoff(qreal cutoff) {
-  *lp->amount = cutoff;
+  if (*lp->amount != cutoff) {
+    *lp->amount = cutoff;
+    emit filterCutoffChanged();
+  }
 }
 
 int main(int argc, char** argv) {
