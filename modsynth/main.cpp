@@ -1,20 +1,14 @@
-#include <functional>
-#include <vector>
 #include <QGuiApplication>
 #include <QQuickView>
-#include <jack/jack.h>
-#include "../libmodsynth/modsynth.h"
+#include <QQmlContext>
+#include "ModSynth.h"
 
-int process(jack_nframes_t nframes, void* arg) {
-  (*static_cast<std::function<void(jack_nframes_t)>*>(arg))(nframes);
-  return 0;
+ModSynth::ModSynth() {
+  createSynth();
+  createJACK();
 }
 
-int main(int argc, char** argv) {
-
-  // Synth
-
-  std::vector<Module*> modules;
+void ModSynth::createSynth() {
 
   VCO* gate_speed_lfo = new SineVCO;
   gate_speed_lfo->cv = new float(.1);
@@ -42,44 +36,62 @@ int main(int argc, char** argv) {
   osc->gate = &gate_lfo_scale->out;
   modules.push_back(osc);
 
-  VCO* filter_lfo = new SineVCO;
-  filter_lfo->cv = new float(.3);
-  filter_lfo->gate = new float(1);
-  modules.push_back(filter_lfo);
-
-  Gain* filter_lfo_scale = new Gain;
-  filter_lfo_scale->in = &filter_lfo->out;
-  filter_lfo_scale->base = filter_lfo_scale->amount = new float (.5);
-  modules.push_back(filter_lfo_scale);
-
-  SimpleFilter* lp = new SimpleFilter;
+  lp = new SimpleFilter;
   lp->in = &osc->out;
-  lp->amount = &filter_lfo_scale->out;
+  lp->amount = new float(0);
   modules.push_back(lp);
 
-  // JACK
+}
 
-  jack_client_t* client = jack_client_open("modsynth", JackNullOption, nullptr, nullptr);
-  jack_port_t* port = jack_port_register(client, "output", JACK_DEFAULT_AUDIO_TYPE, JackPortIsOutput, 0);
-  std::function<void(jack_nframes_t)> real_process = [&](jack_nframes_t nframes) {
-    jack_default_audio_sample_t* buffer = static_cast<jack_default_audio_sample_t*>(jack_port_get_buffer(port, nframes));
-    for (jack_nframes_t i = 0; i < nframes; ++i) {
-      buffer[i] = lp->out_low;
-      for (auto& module: modules)
-        module->update(1 / 44100.f);
-    }
-  };
-  jack_set_process_callback(client, process, &real_process);
+int process(jack_nframes_t nframes, void* arg) {
+  return static_cast<ModSynth*>(arg)->processJACK(nframes);
+}
+
+void ModSynth::createJACK() {
+
+  client = jack_client_open("modsynth", JackNullOption, nullptr, nullptr);
+  port = jack_port_register(client, "output", JACK_DEFAULT_AUDIO_TYPE, JackPortIsOutput, 0);
+  jack_set_process_callback(client, process, this);
   jack_activate(client);
+
   const char** ports = jack_get_ports(client, nullptr, nullptr, JackPortIsInput | JackPortIsPhysical);
   jack_connect(client, jack_port_name(port), ports[0]);
   jack_connect(client, jack_port_name(port), ports[1]);
 
-  // Qt
+}
+
+int ModSynth::processJACK(jack_nframes_t nframes) {
+
+  jack_default_audio_sample_t* buffer = static_cast<jack_default_audio_sample_t*>(jack_port_get_buffer(port, nframes));
+
+  for (jack_nframes_t i = 0; i < nframes; ++i) {
+
+    buffer[i] = lp->out_low;
+
+    for (auto& module: modules)
+      module->update(1.f / jack_get_sample_rate(client));
+
+  }
+
+  return 0;
+
+}
+
+qreal ModSynth::filterCutoff() const {
+  return *lp->amount;
+}
+
+void ModSynth::setFilterCutoff(qreal cutoff) {
+  *lp->amount = cutoff;
+}
+
+int main(int argc, char** argv) {
 
   QGuiApplication app(argc, argv);
   QQuickView view;
   view.setSource(QUrl::fromLocalFile("main.qml"));
+  ModSynth modsynth;
+  view.rootContext()->setContextProperty("modsynth", &modsynth);
   view.show();
   return app.exec();
 
